@@ -1,0 +1,34 @@
+# Deploy the NPU chatbot as a Kubernetes pod.
+#
+# Usage:
+#   make deploy MODEL=<name>
+#   make attach
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: npu-chatbot
+spec:
+  restartPolicy: Never
+  containers:
+  - name: chatbot
+    image: IMAGE_PLACEHOLDER
+    imagePullPolicy: Never
+    stdin: true
+    tty: true
+    args: ["--model", "MODEL_DIR_PLACEHOLDER", "--device", "NPU"]
+    resources:
+      limits:
+        npu.intel.com/accel: 1
+      requests:
+        npu.intel.com/accel: 1
+    securityContext:
+      runAsUser: 0
+    volumeMounts:
+    - name: dshm
+      mountPath: /dev/shm
+  volumes:
+  - name: dshm
+    emptyDir:
+      medium: Memory
+      sizeLimit: 4Gi
