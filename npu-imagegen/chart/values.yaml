@@ -1,0 +1,15 @@
+image: localhost/npu-imagegen:lcm-dreamshaper
+modelDir: /models/lcm-dreamshaper
+
+memory: 24Gi
+
+npu:
+  enabled: true
+
+gpu:
+  enabled: false
+
+service:
+  type: NodePort
+  port: 8080
+  nodePort: 30080

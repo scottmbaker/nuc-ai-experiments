@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Image Generator</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; }
+  .container { max-width: 900px; margin: 0 auto; padding: 2rem 1rem; }
+  h1 { text-align: center; margin-bottom: 0.3rem; color: #a0c4ff; }
+  .subtitle { text-align: center; margin-bottom: 1.5rem; font-size: 0.85rem; color: #666; }
+  .form-group { margin-bottom: 1rem; }
+  label { display: block; margin-bottom: 0.3rem; font-size: 0.9rem; color: #b0b0b0; }
+  input, textarea, select { width: 100%; padding: 0.6rem; border: 1px solid #333; border-radius: 6px;
+    background: #16213e; color: #e0e0e0; font-size: 1rem; }
+  textarea { resize: vertical; min-height: 80px; }
+  .row { display: flex; gap: 1rem; }
+  .row .form-group { flex: 1; }
+  button { width: 100%; padding: 0.8rem; border: none; border-radius: 6px; font-size: 1.1rem;
+    cursor: pointer; background: #0f3460; color: #fff; transition: background 0.2s; }
+  button:hover { background: #1a5276; }
+  button:disabled { background: #333; cursor: not-allowed; }
+  .result { margin-top: 1.5rem; text-align: center; }
+  .result img { max-width: 100%; border-radius: 8px; border: 2px solid #333; }
+  .status { text-align: center; margin-top: 1rem; font-size: 0.9rem; color: #b0b0b0; }
+  .error { color: #ff6b6b; }
+  .gallery { margin-top: 2rem; }
+  .gallery h2 { margin-bottom: 1rem; color: #a0c4ff; font-size: 1.1rem; }
+  .gallery-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
+  .gallery-item { position: relative; cursor: pointer; }
+  .gallery-item img { width: 100%; border-radius: 6px; border: 1px solid #333; transition: border-color 0.2s; }
+  .gallery-item img:hover { border-color: #a0c4ff; }
+  .gallery-item .prompt-overlay { position: absolute; bottom: 0; left: 0; right: 0; padding: 0.4rem;
+    background: rgba(0,0,0,0.7); border-radius: 0 0 6px 6px; font-size: 0.75rem;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .npu-note { font-size: 0.75rem; color: #888; margin-top: 0.2rem; display: none; }
+  .loading-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: #1a1a2e;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 100; }
+  .loading-overlay h2 { color: #a0c4ff; margin-bottom: 1rem; }
+  .loading-overlay .loading-status { color: #b0b0b0; font-size: 1rem; }
+  .loading-overlay .spinner { width: 40px; height: 40px; border: 4px solid #333;
+    border-top-color: #a0c4ff; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 1.5rem; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <h2>Image Generator</h2>
+  <div class="loading-status" id="loadingStatus">Connecting...</div>
+</div>
+<div class="container" id="mainUI" style="display:none">
+  <h1>Image Generator</h1>
+  <div class="subtitle" id="modelInfo"></div>
+  <form id="genForm">
+    <div class="form-group">
+      <label for="prompt">Prompt</label>
+      <textarea id="prompt" placeholder="a red mass-produced sports car in a showroom" required></textarea>
+    </div>
+    <div class="form-group">
+      <label for="negative_prompt">Negative Prompt (optional)</label>
+      <input type="text" id="negative_prompt" placeholder="blurry, low quality, distorted">
+    </div>
+    <div class="row">
+      <div class="form-group">
+        <label for="device">Device</label>
+        <select id="device"></select>
+        <div class="npu-note" id="npuNote">NPU is locked to 512x512</div>
+      </div>
+      <div class="form-group">
+        <label for="width">Width</label>
+        <select id="width">
+          <option value="256">256</option>
+          <option value="384">384</option>
+          <option value="512" selected>512</option>
+          <option value="640">640</option>
+          <option value="768">768</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="height">Height</label>
+        <select id="height">
+          <option value="256">256</option>
+          <option value="384">384</option>
+          <option value="512" selected>512</option>
+          <option value="640">640</option>
+          <option value="768">768</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="steps">Steps</label>
+        <input type="number" id="steps" value="4" min="1" max="50">
+      </div>
+      <div class="form-group">
+        <label for="guidance_scale">Guidance</label>
+        <input type="number" id="guidance_scale" value="1.0" min="0" max="20" step="0.5">
+      </div>
+      <div class="form-group">
+        <label for="seed">Seed</label>
+        <input type="number" id="seed" value="-1" min="-1">
+      </div>
+    </div>
+    <button type="submit" id="submitBtn">Generate</button>
+  </form>
+  <div class="status" id="status"></div>
+  <div class="result" id="result"></div>
+  <div class="gallery" id="gallerySection" style="display:none">
+    <h2>History</h2>
+    <div class="gallery-grid" id="gallery"></div>
+  </div>
+</div>
+<script>
+const loadingOverlay = document.getElementById('loadingOverlay');
+const loadingStatus = document.getElementById('loadingStatus');
+const mainUI = document.getElementById('mainUI');
+const form = document.getElementById('genForm');
+const submitBtn = document.getElementById('submitBtn');
+const statusEl = document.getElementById('status');
+const result = document.getElementById('result');
+const gallery = document.getElementById('gallery');
+const gallerySection = document.getElementById('gallerySection');
+const deviceSelect = document.getElementById('device');
+const widthSelect = document.getElementById('width');
+const heightSelect = document.getElementById('height');
+const npuNote = document.getElementById('npuNote');
+
+// Poll server status until ready
+function pollStatus() {
+  fetch('/status')
+    .then(r => r.json())
+    .then(data => {
+      loadingStatus.textContent = data.status;
+      if (data.ready) {
+        loadingOverlay.style.display = 'none';
+        mainUI.style.display = 'block';
+        initUI();
+      } else {
+        setTimeout(pollStatus, 1000);
+      }
+    })
+    .catch(() => {
+      loadingStatus.textContent = 'Connecting...';
+      setTimeout(pollStatus, 2000);
+    });
+}
+
+pollStatus();
+
+function initUI() {
+  fetch('/devices').then(r => r.json()).then(data => {
+    data.devices.forEach(d => {
+      const opt = document.createElement('option');
+      opt.value = d;
+      opt.textContent = d;
+      if (d === data.default) opt.selected = true;
+      deviceSelect.appendChild(opt);
+    });
+    updateDeviceUI();
+  });
+
+  fetch('/model-info').then(r => r.json()).then(data => {
+    const name = data.pipeline_class.replace('OV', '').replace('Pipeline', '');
+    document.getElementById('modelInfo').textContent = name;
+    document.getElementById('steps').value = data.defaults.steps;
+    document.getElementById('guidance_scale').value = data.defaults.guidance_scale;
+  });
+}
+
+function updateDeviceUI() {
+  const isNPU = deviceSelect.value === 'NPU';
+  widthSelect.disabled = isNPU;
+  heightSelect.disabled = isNPU;
+  npuNote.style.display = isNPU ? 'block' : 'none';
+  if (isNPU) {
+    widthSelect.value = '512';
+    heightSelect.value = '512';
+  }
+}
+
+deviceSelect.addEventListener('change', updateDeviceUI);
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  submitBtn.disabled = true;
+  const device = deviceSelect.value;
+  statusEl.textContent = `Generating on ${device}...`;
+  statusEl.className = 'status';
+  result.innerHTML = '';
+
+  const body = {
+    prompt: document.getElementById('prompt').value,
+    negative_prompt: document.getElementById('negative_prompt').value,
+    device: device,
+    width: parseInt(widthSelect.value),
+    height: parseInt(heightSelect.value),
+    steps: parseInt(document.getElementById('steps').value),
+    guidance_scale: parseFloat(document.getElementById('guidance_scale').value),
+    seed: parseInt(document.getElementById('seed').value),
+  };
+
+  try {
+    const res = await fetch('/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || res.statusText);
+    }
+    const data = await res.json();
+    const imgSrc = 'data:image/png;base64,' + data.image_base64;
+    result.innerHTML = `<img src="${imgSrc}" alt="Generated image">`;
+    statusEl.textContent = `Generated in ${data.elapsed_seconds}s on ${data.device}`;
+
+    const item = document.createElement('div');
+    item.className = 'gallery-item';
+    item.innerHTML = `<img src="${imgSrc}" alt="${body.prompt}">
+      <div class="prompt-overlay">${body.prompt} | ${data.device} | ${body.steps} steps | ${data.elapsed_seconds}s</div>`;
+    gallery.prepend(item);
+    gallerySection.style.display = 'block';
+  } catch (err) {
+    statusEl.textContent = 'Error: ' + err.message;
+    statusEl.className = 'status error';
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>

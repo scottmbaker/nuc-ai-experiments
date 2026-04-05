@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: npu-imagegen
+  labels:
+    app: npu-imagegen
+spec:
+  restartPolicy: Never
+  containers:
+    - name: imagegen
+      image: {{ .Values.image }}
+      imagePullPolicy: Never
+      args: ["--model", {{ .Values.modelDir | quote }}]
+      env:
+        - name: NEOReadDebugKeys
+          value: "1"
+        - name: ForcePreemptionMode
+          value: "1"
+        - name: OV_GPU_SerialCompile
+          value: "1"
+      ports:
+        - containerPort: 8080
+      resources:
+        limits:
+          memory: {{ .Values.memory | quote }}
+          {{- if .Values.npu.enabled }}
+          npu.intel.com/accel: 1
+          {{- end }}
+          {{- if .Values.gpu.enabled }}
+          gpu.intel.com/xe: 1
+          {{- end }}
+        requests:
+          {{- if .Values.npu.enabled }}
+          npu.intel.com/accel: 1
+          {{- end }}
+          {{- if .Values.gpu.enabled }}
+          gpu.intel.com/xe: 1
+          {{- end }}
+      securityContext:
+        runAsUser: 0
+      volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+  volumes:
+    - name: dshm
+      emptyDir:
+        medium: Memory
+        sizeLimit: 4Gi
