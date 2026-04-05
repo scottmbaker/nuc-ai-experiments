@@ -203,7 +203,6 @@ fi
 
 # bashrc setup
 grep -q 'usr/local/bin' ~/.bashrc 2>/dev/null || echo 'export PATH=$PATH:/usr/local/bin' >> ~/.bashrc
-grep -q 'KUBECONFIG' ~/.bashrc 2>/dev/null || echo 'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml' >> ~/.bashrc
 grep -q 'alias k=kubectl' ~/.bashrc 2>/dev/null || {
     echo 'source <(kubectl completion bash)' >> ~/.bashrc
     echo 'alias k=kubectl' >> ~/.bashrc
@@ -240,8 +239,9 @@ else
     ok "K3s installed"
 fi
 
-# Set up kubeconfig for this session
+# Set up kubeconfig for all users (including sudo)
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+grep -q 'KUBECONFIG' /etc/environment 2>/dev/null || echo 'KUBECONFIG=/etc/rancher/k3s/k3s.yaml' >> /etc/environment
 
 # Wait for K3s to be ready
 wait_for_k3s_ready $K3S_READY_TIMEOUT

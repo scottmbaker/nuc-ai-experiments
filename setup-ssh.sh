@@ -18,7 +18,7 @@ fi
 
 echo "Installing openssh-server and sudo and other stuff..."
 apt-get update -qq
-apt-get install -y -qq openssh-server sudo emacs-nox net-tools make  
+apt-get install -y -qq openssh-server sudo emacs-nox net-tools make git
 
 echo "Enabling SSH..."
 sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
