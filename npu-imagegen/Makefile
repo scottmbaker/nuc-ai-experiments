@@ -197,35 +197,15 @@ test: ## Test all models on all devices (TEST_MODELS=... TEST_PROMPT=...)
 			continue; \
 		fi; \
 		for device in CPU GPU NPU; do \
-			test_result=$$(kubectl exec $(POD_NAME) -- python3 -c "\
-import urllib.request,json,base64,io; \
-from PIL import Image; \
-try: \
-    req=urllib.request.Request('http://localhost:8080/generate', \
-        data=json.dumps({'prompt':'$(TEST_PROMPT)','device':'$$device','steps':$$steps,'guidance_scale':$$guidance,'seed':42}).encode(), \
-        headers={'Content-Type':'application/json'}); \
-    r=urllib.request.urlopen(req,timeout=600); \
-    data=json.loads(r.read()); \
-    img=base64.b64decode(data['image_base64']); \
-    im=Image.open(io.BytesIO(img)); \
-    pixels=list(im.getdata()); \
-    avg=sum(sum(p[:3]) for p in pixels[:1000])/(1000*3); \
-    elapsed=data['elapsed_seconds']; \
-    if avg < 1.0: \
-        print(f'BLACK|{elapsed}'); \
-    else: \
-        print(f'OK|{elapsed}'); \
-except Exception as e: \
-    print(f'ERROR|{e}') \
-" 2>/dev/null); \
-			status=$$(echo "$$test_result" | cut -d'|' -f1); \
+			test_result=$$(kubectl exec $(POD_NAME) -- python3 -W ignore -c "import urllib.request,json,base64,io;from PIL import Image;req=urllib.request.Request('http://localhost:8080/generate',data=json.dumps({'prompt':'$(TEST_PROMPT)','device':'$$device','steps':$$steps,'guidance_scale':$$guidance,'seed':42}).encode(),headers={'Content-Type':'application/json'});r=urllib.request.urlopen(req,timeout=600);data=json.loads(r.read());img=base64.b64decode(data['image_base64']);im=Image.open(io.BytesIO(img));pixels=list(im.getdata());avg=sum(sum(p[:3]) for p in pixels[:1000])/(1000*3);elapsed=data['elapsed_seconds'];print(f'BLACK|{elapsed}' if avg<1.0 else f'OK|{elapsed}')" 2>&1); \
+			status=$$(echo "$$test_result" | grep -oE '^(OK|BLACK|ERROR)' || echo "ERROR"); \
 			elapsed=$$(echo "$$test_result" | cut -d'|' -f2); \
 			if [ "$$status" = "OK" ]; then \
 				printf "%-20s %-6s %-10s %s\n" "$$model" "$$device" "$${elapsed}s" "OK"; \
 			elif [ "$$status" = "BLACK" ]; then \
 				printf "%-20s %-6s %-10s %s\n" "$$model" "$$device" "$${elapsed}s" "FAIL: black image"; \
 			else \
-				printf "%-20s %-6s %-10s %s\n" "$$model" "$$device" "-" "FAIL: $$elapsed"; \
+				printf "%-20s %-6s %-10s %s\n" "$$model" "$$device" "-" "FAIL: $$test_result"; \
 			fi; \
 		done; \
 	done

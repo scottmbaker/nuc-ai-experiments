@@ -171,10 +171,13 @@ def load_and_compile(model_path):
             loading_status = "compiling UNet for GPU"
             log.info("Compiling UNet for GPU (dynamic shapes)...")
             try:
+                # SDXL INT8 models produce black images at FP16 (dequantization
+                # overflow). Force FP32 for SDXL, use default FP16 for SD 1.5/LCM.
                 gpu_config = {
-                    "INFERENCE_PRECISION_HINT": "f32",
                     "GPU_ENABLE_LARGE_ALLOCATIONS": "YES",
                 }
+                if "XL" in pipeline_class_name:
+                    gpu_config["INFERENCE_PRECISION_HINT"] = "f32"
                 unet_compiled["GPU"] = core.compile_model(pipe.unet.model, "GPU", gpu_config)
                 log.info("  GPU: OK")
             except Exception as e:
