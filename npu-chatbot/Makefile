@@ -1,4 +1,5 @@
 MODEL ?= tinyllama
+DEVICE ?= NPU
 IMAGE_BASE := localhost/npu-chatbot
 POD_NAME := npu-chatbot
 CONTAINERD_SOCK := /run/k3s/containerd/containerd.sock
@@ -10,7 +11,7 @@ MODEL_ID := $(word 2,$(subst |, ,$(MODEL_LINE)))
 MODEL_DIR := $(word 3,$(subst |, ,$(MODEL_LINE)))
 IMAGE_NAME := $(IMAGE_BASE):$(MODEL)
 
-.PHONY: buildkit build build-all deploy undeploy attach logs status clean models help
+.PHONY: buildkit build build-all deploy undeploy nuke attach logs status fix-k3s clean models help
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  %-20s %s\n", $$1, $$2}'
@@ -24,6 +25,9 @@ models: ## List available models
 		printf "  %-16s %s\n" "$$name" "$$hf"; \
 	done
 	@echo ""
+	@echo "Note: Coder models (qwen25-coder-*) may have issues on NPU at this time."
+	@echo "      Use DEVICE=CPU or DEVICE=GPU: make deploy MODEL=qwen25-coder-7b DEVICE=CPU"
+	@echo ""
 	@echo "Example: make build MODEL=qwen3-1.7b"
 
 buildkit: ## Start buildkitd if not already running
@@ -31,7 +35,7 @@ buildkit: ## Start buildkitd if not already running
 		echo "buildkitd is already running"; \
 	else \
 		echo "Starting buildkitd..."; \
-		buildkitd --oci-worker-no-process-sandbox &>/dev/null & \
+		buildkitd &>/dev/null & \
 		sleep 2; \
 		if pgrep -x buildkitd >/dev/null; then \
 			echo "buildkitd started"; \
@@ -72,8 +76,22 @@ deploy: ## Deploy a model (MODEL=<name>)
 		echo "ERROR: Unknown model '$(MODEL)'. Run 'make models' to see available models."; \
 		exit 1; \
 	fi
-	@kubectl delete pod $(POD_NAME) --ignore-not-found=true 2>/dev/null; sleep 2
-	@sed 's|IMAGE_PLACEHOLDER|$(IMAGE_NAME)|; s|MODEL_DIR_PLACEHOLDER|$(MODEL_DIR)|' \
+	@kubectl delete pod $(POD_NAME) --wait=true --ignore-not-found=true 2>/dev/null
+	@echo "Cleaning up orphaned containerd state..."
+	@for cid in $$(k3s crictl ps -a -q 2>/dev/null); do \
+		if k3s crictl inspect $$cid 2>/dev/null | grep -q $(POD_NAME); then \
+			echo "  Removing orphaned container $$cid"; \
+			k3s crictl rm -f $$cid 2>/dev/null; \
+		fi; \
+	done
+	@for pid in $$(k3s crictl pods -q 2>/dev/null); do \
+		if k3s crictl inspectp $$pid 2>/dev/null | grep -q $(POD_NAME); then \
+			echo "  Removing orphaned sandbox $$pid"; \
+			k3s crictl stopp $$pid 2>/dev/null; \
+			k3s crictl rmp $$pid 2>/dev/null; \
+		fi; \
+	done
+	@sed 's|IMAGE_PLACEHOLDER|$(IMAGE_NAME)|; s|MODEL_DIR_PLACEHOLDER|$(MODEL_DIR)|; s|DEVICE_PLACEHOLDER|$(DEVICE)|' \
 		npu-chatbot-pod.yaml | kubectl apply -f -
 	@echo ""
 	@echo "Waiting for pod to start..."
@@ -91,6 +109,24 @@ deploy: ## Deploy a model (MODEL=<name>)
 undeploy: ## Remove the chatbot pod
 	kubectl delete pod $(POD_NAME) --ignore-not-found=true
 
+nuke: ## Kill orphaned containerd state for this pod
+	@echo "Removing orphaned containers..."
+	@for cid in $$(sudo k3s crictl ps -a -q 2>/dev/null); do \
+		if sudo k3s crictl inspect $$cid 2>/dev/null | grep -q $(POD_NAME); then \
+			echo "  Removing container $$cid"; \
+			sudo k3s crictl rm -f $$cid 2>/dev/null; \
+		fi; \
+	done
+	@echo "Removing orphaned sandboxes..."
+	@for pid in $$(sudo k3s crictl pods -q 2>/dev/null); do \
+		if sudo k3s crictl inspectp $$pid 2>/dev/null | grep -q $(POD_NAME); then \
+			echo "  Removing sandbox $$pid"; \
+			sudo k3s crictl stopp $$pid 2>/dev/null; \
+			sudo k3s crictl rmp $$pid 2>/dev/null; \
+		fi; \
+	done
+	@echo "Done."
+
 attach: ## Attach to the running chatbot
 	kubectl attach -it $(POD_NAME)
 
@@ -105,6 +141,15 @@ status: ## Show pod status and NPU allocatable resources
 	@echo ""
 	@echo "Built images:"
 	@$(NERDCTL) images 2>/dev/null | grep npu-chatbot || echo "  (none)"
+
+fix-k3s: ## Increase k3s timeouts and lower eviction thresholds (run once)
+	@sudo mkdir -p /etc/rancher/k3s
+	@echo 'kubelet-arg:' | sudo tee /etc/rancher/k3s/config.yaml
+	@echo '  - "eviction-hard=imagefs.available<5%,nodefs.available<5%"' | sudo tee -a /etc/rancher/k3s/config.yaml
+	@echo '  - "runtime-request-timeout=30m"' | sudo tee -a /etc/rancher/k3s/config.yaml
+	@echo "Restarting k3s..."
+	@sudo systemctl restart k3s
+	@echo "Done. Wait ~30s for k3s to be ready."
 
 clean: ## Remove all npu-chatbot images
 	@$(NERDCTL) images 2>/dev/null | grep npu-chatbot | awk '{print $$1":"$$2}' | \

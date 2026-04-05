@@ -16,7 +16,7 @@ spec:
     imagePullPolicy: Never
     stdin: true
     tty: true
-    args: ["--model", "MODEL_DIR_PLACEHOLDER", "--device", "NPU"]
+    args: ["--model", "MODEL_DIR_PLACEHOLDER", "--device", "DEVICE_PLACEHOLDER"]
     resources:
       limits:
         npu.intel.com/accel: 1
