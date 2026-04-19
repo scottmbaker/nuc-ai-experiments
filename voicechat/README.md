@@ -28,6 +28,8 @@ The pipeline:
 
 TTS fires per clause inside the LLM streamer, so the user hears the first sentence while the model is still generating.
 
+For a detailed explanation of the AI components — mel spectrograms, transformers, quantization, streaming, and how the Python code ties them together — see [HOW-IT-WORKS.md](HOW-IT-WORKS.md).
+
 ## Requirements
 
 - Intel NUC (or similar) with integrated GPU and NPU
