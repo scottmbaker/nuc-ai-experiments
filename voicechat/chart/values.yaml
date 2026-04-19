@@ -1,0 +1,19 @@
+image: localhost/voicechat:qwen3-8b
+modelDir: /models/qwen3-8b
+whisperDir: /models/whisper-base
+speaker: ljspeech
+ttsDir: /models/speecht5
+ttsDevice: CPU
+
+memory: 16Gi
+
+npu:
+  enabled: true
+
+gpu:
+  enabled: true
+
+service:
+  type: NodePort
+  port: 8080
+  nodePort: 30082

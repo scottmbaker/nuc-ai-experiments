@@ -1,0 +1,87 @@
+# Training container for custom openWakeWord models.
+# Builds a self-contained environment with all deps, runs training, outputs ONNX.
+#
+# Build:
+#   nerdctl build -f Dockerfile.train-wakeword -t wakeword-trainer .
+# Run:
+#   nerdctl run --rm -v /tmp/wakeword_output:/output wakeword-trainer "hey athena"
+#
+FROM ubuntu:22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Build tools needed for webrtcvad (C extension) and piper-phonemize (espeak-ng bindings)
+RUN apt-get update -qq && \
+    apt-get install -y -qq \
+        python3 python3-pip python3-dev \
+        build-essential \
+        git wget \
+        espeak-ng libespeak-ng-dev && \
+    rm -rf /var/lib/apt/lists/*
+
+# PyTorch (CPU build) — installed first so everything else picks it up
+RUN pip3 install --no-cache-dir \
+    "torch>=2.1,<2.5" \
+    "torchaudio>=2.1,<2.5" \
+    --extra-index-url https://download.pytorch.org/whl/cpu
+
+# openWakeWord training deps
+# scipy<1.15: acoustics package removed sph_harm in 1.15, this pin keeps it working
+# piper-phonemize: wraps espeak-ng for TTS; requires libespeak-ng-dev (installed above)
+# webrtcvad: C extension used by generate_samples.py to strip silence from clips
+# deep-phonemizer: required by openwakeword[full]
+# audiomentations 0.33.0: pinned to match piper-sample-generator requirements.txt
+RUN pip3 install --no-cache-dir \
+    "numpy<2" \
+    "scipy>=1.3,<1.15" \
+    pyyaml \
+    scikit-learn \
+    torchinfo \
+    torchmetrics \
+    mutagen \
+    acoustics \
+    speechbrain \
+    huggingface_hub \
+    pronouncing \
+    "audiomentations==0.33.0" \
+    torch-audiomentations \
+    "piper-phonemize==1.1.0" \
+    "deep-phonemizer==0.0.19" \
+    "datasets>=2.14.4,<3" \
+    webrtcvad \
+    tqdm \
+    onnx \
+    openwakeword
+
+# Download the openwakeword pretrained ONNX models (melspectrogram, embedding).
+# They are not bundled in the pip package — download_models() fetches them from HuggingFace.
+RUN python3 -c "import openwakeword; openwakeword.utils.download_models()"
+
+# Clone openWakeWord (contains train.py) and piper-sample-generator (TTS for clip gen)
+# v2.0.0 of piper-sample-generator has generate_samples.py at the repo root,
+# which is what openWakeWord's train.py imports directly via sys.path insertion.
+RUN git clone --depth 1 https://github.com/dscripka/openWakeWord.git /opt/openWakeWord
+RUN git clone --depth 1 --branch v2.0.0 https://github.com/rhasspy/piper-sample-generator.git /opt/piper-sample-generator
+
+RUN test -f /opt/piper-sample-generator/generate_samples.py && echo "generate_samples.py found"
+RUN mkdir -p /opt/piper-sample-generator/models
+
+# Piper TTS model: en_US-libritts_r-medium (default used by generate_samples.py)
+RUN wget -q -O /opt/piper-sample-generator/models/en_US-libritts_r-medium.pt \
+    'https://github.com/rhasspy/piper-sample-generator/releases/download/v2.0.0/en_US-libritts_r-medium.pt'
+
+# Pre-computed ACAV100M audio features — negative training data (large download, ~2GB)
+RUN python3 -c "\
+from huggingface_hub import hf_hub_download; \
+hf_hub_download('davidscripka/openwakeword_features', \
+    'openwakeword_features_ACAV100M_2000_hrs_16bit.npy', \
+    repo_type='dataset', local_dir='/opt/features'); \
+hf_hub_download('davidscripka/openwakeword_features', \
+    'validation_set_features.npy', \
+    repo_type='dataset', local_dir='/opt/features'); \
+print('Downloaded training features')"
+
+COPY train_wakeword_container.py /opt/train.py
+
+ENTRYPOINT ["python3", "/opt/train.py"]
+CMD ["hey athena"]

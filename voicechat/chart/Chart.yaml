@@ -1,0 +1,4 @@
+apiVersion: v2
+name: voicechat
+description: Voice chatbot — Whisper/GPU + LLM/GPU + SpeechT5/CPU + wake word/NPU
+version: 0.1.0

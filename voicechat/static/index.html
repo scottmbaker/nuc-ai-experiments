@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voice Chat</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:       #0f1117;
+    --surface:  #1a1d26;
+    --border:   #2a2d3a;
+    --accent:   #4f8ef7;
+    --accent2:  #7c3aed;
+    --danger:   #ef4444;
+    --warn:     #f59e0b;
+    --ok:       #22c55e;
+    --text:     #e2e8f0;
+    --muted:    #64748b;
+    --user-bg:  #1e3a5f;
+    --bot-bg:   #1a1d26;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* ── Header ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .header-left { display: flex; align-items: center; gap: 12px; }
+
+  h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: 0.02em; }
+
+  .engine-badges {
+    display: flex;
+    gap: 6px;
+  }
+
+  .badge {
+    font-size: 0.68rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    background: var(--bg);
+    transition: color 0.3s, border-color 0.3s;
+  }
+
+  .badge.ok    { color: var(--ok);     border-color: var(--ok); }
+  .badge.busy  { color: var(--warn);   border-color: var(--warn); }
+  .badge.error { color: var(--danger); border-color: var(--danger); }
+
+  .header-right { display: flex; align-items: center; gap: 10px; }
+
+  .toggle-label {
+    display: flex; align-items: center; gap: 6px;
+    cursor: pointer; font-size: 0.8rem; color: var(--muted);
+    user-select: none;
+  }
+  .toggle-label input { accent-color: var(--accent); cursor: pointer; }
+  .toggle-text { white-space: nowrap; }
+
+  .think-text {
+    color: var(--muted);
+    font-style: italic;
+    opacity: 0.6;
+  }
+
+  #wakeword-select {
+    display: none;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 4px 8px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    cursor: pointer;
+  }
+  #wakeword-select:focus { outline: none; border-color: var(--accent); color: var(--text); }
+
+  #model-info-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.78rem;
+  }
+  #model-info-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Conversation ── */
+  #conversation {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    scroll-behavior: smooth;
+  }
+
+  .turn {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: 780px;
+    width: 100%;
+  }
+
+  .turn.user  { align-self: flex-end;  align-items: flex-end; }
+  .turn.bot   { align-self: flex-start; align-items: flex-start; }
+
+  .turn-label {
+    font-size: 0.72rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  .turn-bubble {
+    padding: 10px 16px;
+    border-radius: 16px;
+    line-height: 1.55;
+    font-size: 0.95rem;
+    max-width: 680px;
+    word-break: break-word;
+  }
+
+  .turn.user .turn-bubble {
+    background: var(--user-bg);
+    border-radius: 16px 16px 4px 16px;
+  }
+
+  .turn.bot .turn-bubble {
+    background: var(--bot-bg);
+    border: 1px solid var(--border);
+    border-radius: 16px 16px 16px 4px;
+  }
+
+  .turn-bubble .cursor {
+    display: inline-block;
+    width: 2px;
+    height: 1em;
+    background: var(--accent);
+    margin-left: 2px;
+    animation: blink 1s step-end infinite;
+    vertical-align: middle;
+  }
+
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ── Controls ── */
+  #controls {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 20px;
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  #state-label {
+    font-size: 0.82rem;
+    color: var(--muted);
+    height: 18px;
+    transition: color 0.2s;
+    letter-spacing: 0.04em;
+  }
+
+  #state-label.recording   { color: var(--danger); }
+  #state-label.transcribing { color: var(--warn); }
+  #state-label.thinking    { color: var(--accent); }
+  #state-label.speaking    { color: var(--ok); }
+
+  #ptt-btn {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    border: 3px solid var(--accent);
+    background: var(--bg);
+    color: var(--accent);
+    font-size: 2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, transform 0.1s, border-color 0.2s, box-shadow 0.2s;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+
+  #ptt-btn:hover:not(:disabled) { box-shadow: 0 0 0 6px rgba(79,142,247,0.15); }
+
+  #ptt-btn.recording {
+    background: var(--danger);
+    border-color: var(--danger);
+    color: white;
+    transform: scale(1.08);
+    box-shadow: 0 0 0 8px rgba(239,68,68,0.2);
+  }
+
+  #ptt-btn.busy {
+    border-color: var(--muted);
+    color: var(--muted);
+    cursor: not-allowed;
+  }
+
+  #ptt-btn:disabled {
+    border-color: var(--muted);
+    color: var(--muted);
+    cursor: not-allowed;
+  }
+
+  #controls-footer {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .ctrl-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    padding: 5px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.8rem;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .ctrl-btn:hover { color: var(--text); border-color: var(--text); }
+  .ctrl-btn.danger:hover { color: var(--danger); border-color: var(--danger); }
+
+  /* ── Model info panel ── */
+  #info-panel {
+    display: none;
+    position: fixed;
+    top: 56px;
+    right: 16px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 20px;
+    min-width: 240px;
+    z-index: 100;
+    font-size: 0.82rem;
+    line-height: 1.8;
+  }
+
+  #info-panel.open { display: block; }
+
+  #info-panel h3 {
+    font-size: 0.85rem;
+    margin-bottom: 8px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .info-row { display: flex; justify-content: space-between; gap: 16px; }
+  .info-val { color: var(--accent); font-weight: 500; }
+
+  /* ── Error toast ── */
+  #toast {
+    position: fixed;
+    bottom: 160px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--danger);
+    color: white;
+    padding: 8px 18px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s;
+    white-space: nowrap;
+    max-width: 90vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #toast.show { opacity: 1; }
+
+  /* ── Loading overlay ── */
+  #loading {
+    position: fixed;
+    inset: 0;
+    background: rgba(15,17,23,0.92);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    z-index: 200;
+    transition: opacity 0.4s;
+  }
+  #loading.hidden { opacity: 0; pointer-events: none; }
+
+  .spinner {
+    width: 44px;
+    height: 44px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #loading-msg { color: var(--muted); font-size: 0.9rem; }
+</style>
+</head>
+<body>
+
+<!-- Loading overlay -->
+<div id="loading">
+  <div class="spinner"></div>
+  <div id="loading-msg">Connecting…</div>
+</div>
+
+<!-- Error toast -->
+<div id="toast"></div>
+
+<!-- Header -->
+<header>
+  <div class="header-left">
+    <h1>Voice Chat</h1>
+    <div class="engine-badges">
+      <span class="badge" id="badge-asr">ASR</span>
+      <span class="badge" id="badge-llm">LLM</span>
+      <span class="badge" id="badge-tts">TTS</span>
+      <span class="badge" id="badge-npu">NPU</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <select id="wakeword-select" title="Active wake word"></select>
+    <label class="toggle-label" title="Enable extended thinking mode (slower but more thorough)">
+      <input type="checkbox" id="think-toggle">
+      <span class="toggle-text">Think</span>
+    </label>
+    <button id="model-info-btn">ℹ Model info</button>
+  </div>
+</header>
+
+<!-- Model info panel -->
+<div id="info-panel">
+  <h3>Engine Info</h3>
+  <div class="info-row"><span>LLM</span><span class="info-val" id="info-llm">—</span></div>
+  <div class="info-row"><span>Device</span><span class="info-val" id="info-device">—</span></div>
+  <div class="info-row"><span>Whisper</span><span class="info-val" id="info-whisper">—</span></div>
+  <div class="info-row"><span>ASR device</span><span class="info-val" id="info-wdev">—</span></div>
+  <div class="info-row"><span>Voice</span><span class="info-val" id="info-voice">—</span></div>
+</div>
+
+<!-- Conversation -->
+<div id="conversation"></div>
+
+<!-- Controls -->
+<div id="controls">
+  <div id="state-label">Hold to speak</div>
+  <button id="ptt-btn" disabled>🎤</button>
+  <div id="controls-footer">
+    <button class="ctrl-btn danger" id="reset-btn">Reset conversation</button>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+// ── State ─────────────────────────────────────────────────────
+
+const State = Object.freeze({
+  LOADING:      'loading',
+  IDLE:         'idle',
+  RECORDING:    'recording',
+  TRANSCRIBING: 'transcribing',
+  THINKING:     'thinking',
+  SPEAKING:     'speaking',
+  BUSY:         'busy',
+  ERROR:        'error',
+});
+
+let appState  = State.LOADING;
+let ws        = null;
+let mediaRecorder = null;
+let audioChunks   = [];
+let audioStream   = null;
+
+// AudioContext for gapless chunk playback
+let audioCtx      = null;
+let nextPlayAt    = 0;   // scheduled end time of the last queued chunk
+
+// Current bot turn element (streaming)
+let botTurnEl = null;
+let botBubbleEl = null;
+
+// ── DOM refs ─────────────────────────────────────────────────
+
+const loadingEl    = document.getElementById('loading');
+const loadingMsgEl = document.getElementById('loading-msg');
+const pttBtn       = document.getElementById('ptt-btn');
+const stateLabelEl = document.getElementById('state-label');
+const toastEl      = document.getElementById('toast');
+const convEl       = document.getElementById('conversation');
+const resetBtn     = document.getElementById('reset-btn');
+const infoPanelEl  = document.getElementById('info-panel');
+const modelInfoBtn = document.getElementById('model-info-btn');
+const badgeAsr       = document.getElementById('badge-asr');
+const badgeLlm       = document.getElementById('badge-llm');
+const badgeTts       = document.getElementById('badge-tts');
+const badgeNpu       = document.getElementById('badge-npu');
+const wakewordSelect = document.getElementById('wakeword-select');
+
+// ── Helpers ───────────────────────────────────────────────────
+
+function setState(s) {
+  appState = s;
+  stateLabelEl.className = s;
+  pttBtn.className = '';
+
+  switch (s) {
+    case State.IDLE:
+      stateLabelEl.textContent = wakewordEnabled
+        ? `Say "${activeWakeWordLabel()}" or hold to speak`
+        : 'Hold to speak';
+      pttBtn.textContent = '🎤';
+      pttBtn.disabled = false;
+      break;
+    case State.RECORDING:
+      stateLabelEl.textContent = 'Recording… release to send';
+      pttBtn.textContent = '⏹';
+      pttBtn.classList.add('recording');
+      pttBtn.disabled = false;
+      break;
+    case State.TRANSCRIBING:
+      stateLabelEl.textContent = 'Transcribing…';
+      pttBtn.textContent = '🎤';
+      pttBtn.classList.add('busy');
+      pttBtn.disabled = true;
+      break;
+    case State.THINKING:
+      stateLabelEl.textContent = 'Thinking…';
+      pttBtn.textContent = '🎤';
+      pttBtn.classList.add('busy');
+      pttBtn.disabled = true;
+      break;
+    case State.SPEAKING:
+      stateLabelEl.textContent = 'Speaking…';
+      pttBtn.textContent = '🔊';
+      pttBtn.classList.add('busy');
+      pttBtn.disabled = true;
+      break;
+    case State.LOADING:
+      stateLabelEl.textContent = 'Loading engines…';
+      pttBtn.textContent = '🎤';
+      pttBtn.disabled = true;
+      break;
+    default:
+      pttBtn.disabled = true;
+  }
+}
+
+let toastTimer = null;
+function showToast(msg, dur = 4000) {
+  toastEl.textContent = msg;
+  toastEl.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), dur);
+}
+
+function setBadge(el, status) {
+  el.className = 'badge';
+  if (status === 'ok')    el.classList.add('ok');
+  if (status === 'busy')  el.classList.add('busy');
+  if (status === 'error') el.classList.add('error');
+}
+
+// ── Conversation UI ───────────────────────────────────────────
+
+function addUserTurn(text) {
+  const turn = document.createElement('div');
+  turn.className = 'turn user';
+  turn.innerHTML = `<div class="turn-label">You</div>
+    <div class="turn-bubble">${escHtml(text)}</div>`;
+  convEl.appendChild(turn);
+  scrollToBottom();
+}
+
+let thinkSpan = null;  // tracks current <think> span (non-null while inside a think block)
+
+function startBotTurn() {
+  thinkSpan = null;
+  botTurnEl = document.createElement('div');
+  botTurnEl.className = 'turn bot';
+  botBubbleEl = document.createElement('div');
+  botBubbleEl.className = 'turn-bubble';
+  botBubbleEl.innerHTML = '<span class="cursor"></span>';
+  botTurnEl.innerHTML = '<div class="turn-label">Assistant</div>';
+  botTurnEl.appendChild(botBubbleEl);
+  convEl.appendChild(botTurnEl);
+  scrollToBottom();
+}
+
+function appendBotToken(token, thinking) {
+  if (!botBubbleEl) return;
+  const cursor = botBubbleEl.querySelector('.cursor');
+
+  if (thinking) {
+    // Start or continue a think span
+    if (!thinkSpan) {
+      thinkSpan = document.createElement('span');
+      thinkSpan.className = 'think-text';
+      botBubbleEl.insertBefore(thinkSpan, cursor);
+    }
+    // Strip the tags themselves from display
+    const clean = token.replace(/<\/?think>/g, '');
+    if (clean) thinkSpan.appendChild(document.createTextNode(clean));
+    if (token.includes('</think>')) {
+      thinkSpan = null;  // close the span
+    }
+  } else {
+    thinkSpan = null;
+    const txt = document.createTextNode(token);
+    botBubbleEl.insertBefore(txt, cursor);
+  }
+  scrollToBottom();
+}
+
+function finalizeBotTurn() {
+  if (!botBubbleEl) return;
+  const cursor = botBubbleEl.querySelector('.cursor');
+  if (cursor) cursor.remove();
+  botTurnEl = null;
+  botBubbleEl = null;
+}
+
+function scrollToBottom() {
+  convEl.scrollTop = convEl.scrollHeight;
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Audio playback ────────────────────────────────────────────
+
+function getAudioCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+  if (audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+  return audioCtx;
+}
+
+async function playAudioChunk(base64wav) {
+  const ctx = getAudioCtx();
+  const bytes = Uint8Array.from(atob(base64wav), c => c.charCodeAt(0));
+  let buf;
+  try {
+    buf = await ctx.decodeAudioData(bytes.buffer.slice(0));
+  } catch (e) {
+    console.warn('Audio decode error:', e);
+    return;
+  }
+
+  const source = ctx.createBufferSource();
+  source.buffer = buf;
+  source.connect(ctx.destination);
+
+  const now = ctx.currentTime;
+  const startAt = Math.max(now, nextPlayAt);
+  source.start(startAt);
+  nextPlayAt = startAt + buf.duration;
+}
+
+function resetAudioQueue() {
+  nextPlayAt = 0;
+}
+
+// ── Audio capture (PTT + wake word) ──────────────────────────
+
+let activeWakeWord = '';   // raw name e.g. "Hey_Athena"
+
+function activeWakeWordLabel() {
+  // "Hey_Athena" → "Hey Athena"
+  return activeWakeWord.replace(/_/g, ' ');
+}
+
+let wwStreamActive = false;
+let wwScriptNode = null;
+let wwSourceNode = null;
+let wakewordEnabled = false;  // set after model-info check
+
+async function ensureStream() {
+  if (audioStream && audioStream.active) return audioStream;
+  audioStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+  return audioStream;
+}
+
+/**
+ * Start continuous wake word streaming: captures mic at 16kHz,
+ * sends 80ms int16 PCM chunks to server for NPU wake word detection.
+ */
+async function startWakeWordStream() {
+  if (wwStreamActive || !wakewordEnabled) return;
+  try {
+    const stream = await ensureStream();
+    const actx = getAudioCtx();
+
+    // Resample to 16kHz using OfflineAudioContext per chunk is expensive.
+    // Instead, use ScriptProcessor at native rate and downsample manually.
+    wwSourceNode = actx.createMediaStreamSource(stream);
+
+    // Buffer size 4096 at 48kHz ≈ 85ms — close to the 80ms openWakeWord needs
+    wwScriptNode = actx.createScriptProcessor(4096, 1, 1);
+
+    wwScriptNode.onaudioprocess = (e) => {
+      if (appState !== State.IDLE || !ws || ws.readyState !== WebSocket.OPEN) return;
+      const input = e.inputBuffer.getChannelData(0); // Float32 at native rate
+      const nativeSr = actx.sampleRate;
+      const targetSr = 16000;
+      const ratio = nativeSr / targetSr;
+      const outLen = Math.floor(input.length / ratio);
+      const pcm16 = new Int16Array(outLen);
+      for (let i = 0; i < outLen; i++) {
+        const srcIdx = Math.floor(i * ratio);
+        pcm16[i] = Math.max(-32768, Math.min(32767, Math.round(input[srcIdx] * 32767)));
+      }
+      // Send as base64 JSON
+      const bytes = new Uint8Array(pcm16.buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+      const b64 = btoa(binary);
+      ws.send(JSON.stringify({type: 'ww_audio', data: b64}));
+    };
+
+    wwSourceNode.connect(wwScriptNode);
+    wwScriptNode.connect(actx.destination); // must connect to destination for onaudioprocess to fire
+    wwStreamActive = true;
+    console.log('Wake word streaming started');
+  } catch(e) {
+    console.error('Wake word stream error:', e);
+  }
+}
+
+function stopWakeWordStream() {
+  if (wwScriptNode) {
+    wwScriptNode.disconnect();
+    wwScriptNode = null;
+  }
+  if (wwSourceNode) {
+    wwSourceNode.disconnect();
+    wwSourceNode = null;
+  }
+  wwStreamActive = false;
+}
+
+/**
+ * After wake word detection: start recording with silence-based auto-stop.
+ * Records for up to 10 seconds, stops after 1.5s of silence.
+ */
+let wwRecordTimeout = null;
+let wwSilenceChecker = null;
+
+async function startWakeWordRecording() {
+  if (appState !== State.IDLE) return;
+  getAudioCtx();
+  try {
+    const stream = await ensureStream();
+    audioChunks = [];
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus' : '';
+    mediaRecorder = mimeType
+      ? new MediaRecorder(stream, { mimeType })
+      : new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.start(100);
+    setState(State.RECORDING);
+
+    // Auto-stop after 10 seconds max
+    wwRecordTimeout = setTimeout(() => stopRecording(), 10000);
+
+    // Silence detection using analyser
+    const actx = getAudioCtx();
+    const analyser = actx.createAnalyser();
+    analyser.fftSize = 2048;
+    const source = actx.createMediaStreamSource(stream);
+    source.connect(analyser);
+    const dataArr = new Uint8Array(analyser.fftSize);
+    let silentFrames = 0;
+    const SILENCE_THRESHOLD = 10;
+    const SILENCE_FRAMES = 30; // ~1.5s at 50ms intervals
+
+    wwSilenceChecker = setInterval(() => {
+      if (appState !== State.RECORDING) {
+        clearInterval(wwSilenceChecker);
+        source.disconnect();
+        return;
+      }
+      analyser.getByteTimeDomainData(dataArr);
+      let maxVal = 0;
+      for (let i = 0; i < dataArr.length; i++) {
+        maxVal = Math.max(maxVal, Math.abs(dataArr[i] - 128));
+      }
+      if (maxVal < SILENCE_THRESHOLD) {
+        silentFrames++;
+        if (silentFrames >= SILENCE_FRAMES) {
+          clearInterval(wwSilenceChecker);
+          source.disconnect();
+          stopRecording();
+        }
+      } else {
+        silentFrames = 0;
+      }
+    }, 50);
+
+  } catch(e) {
+    showToast('Microphone error: ' + e.message);
+  }
+}
+
+async function startRecording() {
+  if (appState !== State.IDLE) return;
+  getAudioCtx(); // unlock AudioContext during user gesture (PTT press)
+  try {
+    const stream = await ensureStream();
+    audioChunks = [];
+    // Prefer webm/opus; fall back to browser default
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : '';
+    mediaRecorder = mimeType
+      ? new MediaRecorder(stream, { mimeType })
+      : new MediaRecorder(stream);
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.start(100); // collect in 100ms chunks for reliable ondataavailable
+    setState(State.RECORDING);
+  } catch (e) {
+    showToast('Microphone access denied: ' + e.message);
+  }
+}
+
+function stopRecording() {
+  if (appState !== State.RECORDING || !mediaRecorder) return;
+  if (wwRecordTimeout) { clearTimeout(wwRecordTimeout); wwRecordTimeout = null; }
+  if (wwSilenceChecker) { clearInterval(wwSilenceChecker); wwSilenceChecker = null; }
+  mediaRecorder.stop();
+  mediaRecorder.onstop = () => {
+    if (!audioChunks.length) return;
+    const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+    blob.arrayBuffer().then(buf => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        setState(State.TRANSCRIBING);
+        ws.send(buf);
+      }
+    });
+  };
+}
+
+// ── WebSocket ─────────────────────────────────────────────────
+
+function connectWs() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/voice-chat`);
+
+  ws.onopen = () => {
+    console.log('WebSocket connected');
+    checkReady();
+  };
+
+  ws.onmessage = (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch { return; }
+    handleMsg(msg);
+  };
+
+  ws.onclose = () => {
+    console.log('WebSocket closed, reconnecting in 2s…');
+    stopWakeWordStream();  // clears wwStreamActive so startWakeWordStream() works after reconnect
+    setState(State.LOADING);
+    setBadge(badgeAsr, '');
+    setBadge(badgeLlm, '');
+    setBadge(badgeTts, '');
+    setBadge(badgeNpu, '');
+    setTimeout(connectWs, 2000);
+  };
+
+  ws.onerror = (e) => console.error('WS error:', e);
+}
+
+function handleMsg(msg) {
+  switch (msg.type) {
+    case 'status':
+      updateStageState(msg.stage);
+      break;
+
+    case 'transcript':
+      addUserTurn(msg.text);
+      startBotTurn();
+      resetAudioQueue();
+      setBadge(badgeLlm, 'busy');
+      break;
+
+    case 'llm_token':
+      appendBotToken(msg.text, msg.thinking);
+      break;
+
+    case 'llm_done':
+      finalizeBotTurn();
+      setBadge(badgeLlm, 'ok');
+      break;
+
+    case 'audio_chunk':
+      setBadge(badgeTts, 'busy');
+      playAudioChunk(msg.data).catch(console.warn);
+      break;
+
+    case 'audio_done':
+      setBadge(badgeTts, 'ok');
+      break;
+
+    case 'wakeword':
+      console.log('Wake word detected, score:', msg.score);
+      showToast('Wake word detected!', 1500);
+      setBadge(badgeNpu, 'busy');
+      setTimeout(() => setBadge(badgeNpu, 'ok'), 1000);
+      startWakeWordRecording();
+      break;
+
+    case 'reset_done':
+      convEl.innerHTML = '';
+      showToast('Conversation reset', 2000);
+      break;
+
+    case 'error':
+      showToast(msg.message || 'Unknown error');
+      finalizeBotTurn();
+      setState(State.IDLE);
+      setBadge(badgeLlm, 'error');
+      break;
+  }
+}
+
+function updateStageState(stage) {
+  switch (stage) {
+    case 'transcribing':
+      setState(State.TRANSCRIBING);
+      setBadge(badgeAsr, 'busy');
+      setBadge(badgeLlm, '');
+      setBadge(badgeTts, '');
+      break;
+    case 'thinking':
+      setState(State.THINKING);
+      setBadge(badgeAsr, 'ok');
+      setBadge(badgeLlm, 'busy');
+      break;
+    case 'speaking':
+      setState(State.SPEAKING);
+      setBadge(badgeTts, 'busy');
+      break;
+    case 'idle':
+      setState(State.IDLE);
+      if (wakewordEnabled) startWakeWordStream();
+      break;
+  }
+}
+
+// ── Status polling ────────────────────────────────────────────
+
+async function checkReady() {
+  try {
+    const r = await fetch('/status');
+    const s = await r.json();
+    if (s.ready) {
+      loadingEl.classList.add('hidden');
+      setState(State.IDLE);
+      setBadge(badgeAsr, 'ok');
+      setBadge(badgeLlm, 'ok');
+      setBadge(badgeTts, 'ok');
+      // NPU badge set later by fetchModelInfo if wake word is loaded
+      fetchModelInfo();
+    } else {
+      loadingMsgEl.textContent = s.status || 'Loading…';
+      setTimeout(checkReady, 1500);
+    }
+  } catch {
+    loadingMsgEl.textContent = 'Waiting for server…';
+    setTimeout(checkReady, 2000);
+  }
+}
+
+async function fetchModelInfo() {
+  try {
+    const r = await fetch('/model-info');
+    const d = await r.json();
+    document.getElementById('info-llm').textContent     = d.llm     || '—';
+    document.getElementById('info-device').textContent  = d.device  || '—';
+    document.getElementById('info-whisper').textContent = d.whisper || '—';
+    document.getElementById('info-wdev').textContent    = d.whisper_device || '—';
+    document.getElementById('info-voice').textContent   = d.voice   || '—';
+
+    if (d.wakeword && d.available_wakewords && d.available_wakewords.length > 0) {
+      wakewordEnabled = true;
+      activeWakeWord = d.wakeword;
+
+      // Populate selector
+      wakewordSelect.innerHTML = '';
+      d.available_wakewords.forEach(name => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name.replace(/_/g, ' ');
+        opt.selected = (name === d.wakeword);
+        wakewordSelect.appendChild(opt);
+      });
+      // Only show selector if there's more than one option
+      wakewordSelect.style.display = d.available_wakewords.length > 1 ? 'block' : 'none';
+      setBadge(badgeNpu, 'ok');
+
+      setState(appState);
+      startWakeWordStream();
+    }
+  } catch { /* ignore */ }
+}
+
+// ── PTT button events ─────────────────────────────────────────
+
+pttBtn.addEventListener('mousedown',  e => { e.preventDefault(); startRecording(); });
+pttBtn.addEventListener('mouseup',    e => { e.preventDefault(); stopRecording(); });
+pttBtn.addEventListener('mouseleave', e => { if (appState === State.RECORDING) stopRecording(); });
+pttBtn.addEventListener('touchstart', e => { e.preventDefault(); startRecording(); }, { passive: false });
+pttBtn.addEventListener('touchend',   e => { e.preventDefault(); stopRecording(); },  { passive: false });
+
+// ── Other controls ────────────────────────────────────────────
+
+resetBtn.addEventListener('click', () => {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: 'reset' }));
+  }
+});
+
+modelInfoBtn.addEventListener('click', () => {
+  infoPanelEl.classList.toggle('open');
+});
+
+// ── Wake word selector ────────────────────────────────────────
+wakewordSelect.addEventListener('change', async () => {
+  const name = wakewordSelect.value;
+  try {
+    await fetch('/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({wakeword: name})
+    });
+    activeWakeWord = name;
+    setState(appState);  // refresh idle label
+  } catch(e) {
+    console.error('Wake word switch error:', e);
+  }
+});
+
+// ── Thinking toggle ──────────────────────────────────────────
+const thinkToggle = document.getElementById('think-toggle');
+
+async function loadSettings() {
+  try {
+    const r = await fetch('/settings');
+    const s = await r.json();
+    thinkToggle.checked = s.thinking_enabled;
+  } catch(e) {}
+}
+
+thinkToggle.addEventListener('change', async () => {
+  try {
+    await fetch('/settings', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({thinking_enabled: thinkToggle.checked})
+    });
+  } catch(e) { console.error('Settings error:', e); }
+});
+
+loadSettings();
+
+document.addEventListener('click', (e) => {
+  if (!infoPanelEl.contains(e.target) && e.target !== modelInfoBtn) {
+    infoPanelEl.classList.remove('open');
+  }
+});
+
+// ── Boot ──────────────────────────────────────────────────────
+
+if (!navigator.mediaDevices || !window.MediaRecorder) {
+  // Most likely cause: HTTP on a non-localhost origin blocks MediaDevices (secure context required)
+  const isHttp = location.protocol === 'http:' && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1';
+  if (isHttp) {
+    loadingMsgEl.innerHTML =
+      'Microphone blocked — browser requires HTTPS for mic access on non-localhost origins.<br><br>' +
+      '<b>Chrome fix:</b> open <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code>, ' +
+      'add <code>' + location.origin + '</code>, relaunch.<br><br>' +
+      '<b>Firefox fix:</b> open <code>about:config</code>, set ' +
+      '<code>media.devices.insecure.enabled</code> to <code>true</code>.';
+  } else {
+    loadingMsgEl.textContent = 'This browser does not support audio recording (MediaRecorder API required).';
+  }
+} else {
+  connectWs();
+}
+</script>
+</body>
+</html>
