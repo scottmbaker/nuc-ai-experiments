@@ -1,0 +1,33 @@
+detection:
+  confidence: 0.5
+  classes:
+    - person
+    - car
+    - bicycle
+    - dog
+    - cat
+    - truck
+    - motorcycle
+    - bus
+
+clips:
+  output_dir: /app/clips
+  pre_roll: 5
+  post_roll: 10
+
+alerts:
+  enabled: false
+  method: ntfy
+  cooldown: 60
+  ntfy:
+    server: https://ntfy.sh
+    topic: securitycam
+
+alpr:
+  # Mode controls when license-plate recognition runs on each frame.
+  #   always — run on every frame that reaches the ALPR queue
+  #   gated  — only run when YOLO detected a vehicle in the frame (default)
+  #   never  — skip ALPR entirely (plate overlay cleared)
+  mode: gated
+
+database: /app/data/detections.db

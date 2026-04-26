@@ -1,0 +1,5 @@
+cameras.yaml
+clips/
+data/
+*.mp4
+__pycache__/

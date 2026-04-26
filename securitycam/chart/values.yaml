@@ -1,0 +1,15 @@
+image: localhost/securitycam:latest
+memory: 12Gi
+
+mode: test  # "test" = bundled videos, "live" = cameras.yaml
+
+npu:
+  enabled: true
+
+gpu:
+  enabled: true
+
+service:
+  type: NodePort
+  port: 8080
+  nodePort: 30083

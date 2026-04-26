@@ -1,0 +1,7 @@
+cameras:
+  - name: front-door
+    url: rtsp://admin:password@192.168.1.100:554/Streaming/Channels/101
+  - name: driveway
+    url: rtsp://admin:password@192.168.1.101:554/Streaming/Channels/101
+  - name: backyard
+    url: rtsp://admin:password@192.168.1.102:554/Streaming/Channels/101

@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Security Camera AI</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #0f1117; color: #e2e8f0;
+    height: 100dvh; display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* --- Header --- */
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 16px; border-bottom: 1px solid #2a2d3a;
+    background: #1a1d26; flex-shrink: 0; gap: 12px;
+    flex-wrap: wrap;
+  }
+  .header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: .02em; }
+  .device-badges { display: flex; gap: 6px; }
+  .badge {
+    font-size: 0.7rem; font-weight: 600; padding: 2px 8px;
+    border-radius: 4px; text-transform: uppercase;
+  }
+  .badge.cpu      { background: #1e40af; }
+  .badge.gpu      { background: #065f46; }
+  .badge.npu      { background: #7c2d12; }
+  .badge.off      { background: #333; color: #666; }
+  .badge.alpr-npu { background: #065f46; }
+  .badge.alpr-cpu { background: #b45309; }  /* amber — CPU fallback */
+  .badge.alpr-off { background: #333; color: #888; }
+
+  .controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .controls label { font-size: 0.75rem; color: #64748b; }
+  .controls select {
+    background: #1a1d26; color: #e2e8f0; border: 1px solid #2a2d3a;
+    border-radius: 4px; padding: 4px 8px; font-size: 0.8rem;
+  }
+  .controls select:disabled { opacity: 0.4; }
+
+  /* --- Main layout --- */
+  .main { flex: 1; display: flex; overflow: hidden; }
+
+  /* --- Video area (tiles) --- */
+  .video-area {
+    flex: 1; background: #000; min-width: 0; position: relative;
+    display: grid; gap: 2px; padding: 2px;
+  }
+  .video-area.layout-2x2 {
+    grid-template-columns: 1fr 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+  .video-area.layout-1x1 { grid-template-columns: 1fr; }
+  .video-area.layout-1x1 .tile:not(.focused) { display: none; }
+
+  .tile {
+    position: relative; background: #181c24; overflow: hidden;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .tile img {
+    max-width: 100%; max-height: 100%;
+    width: 100%; height: 100%; object-fit: contain;
+    background: #000;
+  }
+  .tile-overlay {
+    position: absolute; left: 0; right: 0; top: 0;
+    padding: 4px 8px; display: flex; justify-content: space-between;
+    gap: 8px; pointer-events: none;
+    background: linear-gradient(to bottom, rgba(0,0,0,0.55), transparent);
+    font-size: 0.75rem;
+  }
+  .tile-name { font-weight: 600; color: #fff; }
+  .tile-stats { color: #cbd5e1; font-variant-numeric: tabular-nums; }
+  .tile-stats .dot {
+    display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+    margin-right: 4px; vertical-align: middle;
+  }
+  .tile-stats .dot.connected    { background: #22c55e; }
+  .tile-stats .dot.disconnected { background: #b45309; }
+  .tile-stats .dot.empty        { background: #475569; }
+
+  /* --- Sidebar --- */
+  .sidebar {
+    width: 320px; flex-shrink: 0;
+    display: flex; flex-direction: column;
+    border-left: 1px solid #2a2d3a; background: #1a1d26;
+    overflow: hidden;
+  }
+  .sidebar-section {
+    padding: 10px 12px; border-bottom: 1px solid #2a2d3a;
+  }
+  .sidebar-section h2 {
+    font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+    color: #64748b; margin-bottom: 6px; letter-spacing: .05em;
+  }
+
+  /* Global telemetry card */
+  .telem-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px;
+  }
+  .telem-item {
+    background: #0f1117; border-radius: 6px; padding: 6px 10px;
+  }
+  .telem-label {
+    font-size: 0.68rem; color: #64748b; text-transform: uppercase;
+  }
+  .telem-value {
+    font-size: 1rem; font-weight: 600; font-variant-numeric: tabular-nums;
+  }
+  .telem-value.npu  { color: #f59e0b; }
+  .telem-value.alpr { color: #06b6d4; }
+
+  /* Per-slot mini cards */
+  .slot-cards {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  }
+  .slot-card {
+    background: #0f1117; border-radius: 6px; padding: 6px 8px;
+    font-size: 0.72rem; border-left: 3px solid #475569;
+  }
+  .slot-card.connected    { border-left-color: #22c55e; }
+  .slot-card.disconnected { border-left-color: #b45309; }
+  .slot-card.empty        { border-left-color: #333; opacity: 0.55; }
+  .slot-card-head {
+    display: flex; justify-content: space-between;
+    font-weight: 600; color: #e2e8f0; margin-bottom: 2px;
+  }
+  .slot-card-foot {
+    color: #64748b; font-variant-numeric: tabular-nums;
+    font-size: 0.68rem;
+  }
+
+  /* Plates panel */
+  .plate-tag {
+    display: inline-block; background: #164e63; color: #06b6d4;
+    font-weight: 700; padding: 2px 6px; border-radius: 4px;
+    font-size: 0.78rem; margin: 2px 3px 2px 0;
+    font-variant-numeric: tabular-nums; letter-spacing: .04em;
+  }
+
+  /* Event log */
+  .event-log {
+    flex: 1; overflow-y: auto; padding: 0 12px 12px 12px;
+  }
+  .event-log h2 {
+    font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+    color: #64748b; margin: 10px 0 6px 0; letter-spacing: .05em;
+    position: sticky; top: 0; background: #1a1d26; padding: 4px 0;
+  }
+  .event {
+    font-size: 0.75rem; padding: 4px 6px; margin-bottom: 2px;
+    background: #0f1117; border-radius: 4px;
+    display: flex; justify-content: space-between; gap: 8px;
+  }
+  .event .cls  { font-weight: 600; color: #e2e8f0; }
+  .event .meta {
+    color: #64748b; font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .event .time { color: #475569; font-size: 0.7rem; }
+
+  /* Loading overlay */
+  .loading-overlay {
+    position: fixed; inset: 0; background: #0f1117;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; z-index: 100;
+  }
+  .loading-overlay h2 { color: #4f8ef7; margin-bottom: 12px; }
+  .loading-overlay .status-text { color: #64748b; font-size: 1rem; }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid #2a2d3a; border-top-color: #4f8ef7;
+    border-radius: 50%; animation: spin .8s linear infinite;
+    margin-bottom: 16px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #2a2d3a; border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="spinner"></div>
+  <h2>Security Camera AI</h2>
+  <div class="status-text" id="loadingStatus">Initializing...</div>
+</div>
+
+<div class="header">
+  <div style="display:flex;align-items:center;gap:12px">
+    <h1>Security Camera AI</h1>
+    <div class="device-badges">
+      <span class="badge cpu">CPU</span>
+      <span class="badge npu" id="npuBadge">NPU</span>
+      <span class="badge alpr-off" id="alprDeviceBadge"
+            title="Plate detector device">ALPR --</span>
+    </div>
+  </div>
+  <div class="controls">
+    <label>Source:</label>
+    <select id="sourceModeSelect" onchange="setSourceMode(this.value)">
+      <option value="live">Live cameras</option>
+      <option value="test">Test videos</option>
+    </select>
+
+    <label>ALPR:</label>
+    <select id="alprModeSelect" onchange="setAlprMode(this.value)">
+      <option value="gated">Gated (vehicles only)</option>
+      <option value="always">Always</option>
+      <option value="never">Never</option>
+    </select>
+
+    <label>Layout:</label>
+    <select id="layoutSelect" onchange="setLayout(this.value)">
+      <option value="2x2">2×2 grid</option>
+      <option value="1x1">1×1 focus</option>
+    </select>
+
+    <label>Focus:</label>
+    <select id="focusSelect" onchange="setFocus(Number(this.value))">
+      <option value="0">Slot 0</option>
+      <option value="1">Slot 1</option>
+      <option value="2">Slot 2</option>
+      <option value="3">Slot 3</option>
+    </select>
+  </div>
+</div>
+
+<div class="main">
+  <div class="video-area layout-2x2" id="videoArea">
+    <div class="tile" data-slot="0">
+      <img alt="slot 0" />
+      <div class="tile-overlay">
+        <span class="tile-name" data-name="0">Slot 0</span>
+        <span class="tile-stats" data-stats="0"></span>
+      </div>
+    </div>
+    <div class="tile" data-slot="1">
+      <img alt="slot 1" />
+      <div class="tile-overlay">
+        <span class="tile-name" data-name="1">Slot 1</span>
+        <span class="tile-stats" data-stats="1"></span>
+      </div>
+    </div>
+    <div class="tile" data-slot="2">
+      <img alt="slot 2" />
+      <div class="tile-overlay">
+        <span class="tile-name" data-name="2">Slot 2</span>
+        <span class="tile-stats" data-stats="2"></span>
+      </div>
+    </div>
+    <div class="tile" data-slot="3">
+      <img alt="slot 3" />
+      <div class="tile-overlay">
+        <span class="tile-name" data-name="3">Slot 3</span>
+        <span class="tile-stats" data-stats="3"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <h2>Global telemetry</h2>
+      <div class="telem-grid">
+        <div class="telem-item">
+          <div class="telem-label">NPU (YOLO)</div>
+          <div class="telem-value npu" id="tNpu">--</div>
+        </div>
+        <div class="telem-item">
+          <div class="telem-label">ALPR last</div>
+          <div class="telem-value alpr" id="tAlpr">--</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <h2>Slots</h2>
+      <div class="slot-cards" id="slotCards"></div>
+    </div>
+
+    <div class="sidebar-section">
+      <h2>License plates</h2>
+      <div id="plateList" style="min-height:20px">
+        <span style="color:#64748b;font-size:0.8rem">No plates detected</span>
+      </div>
+    </div>
+
+    <div class="event-log">
+      <h2>Detection events</h2>
+      <div id="eventList"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let ready = false;
+
+/* ------------------------------------------------------------------ */
+/* Layout state (client-side only, persisted in localStorage)          */
+/* ------------------------------------------------------------------ */
+function getLayout() {
+  return localStorage.getItem('layout') || '2x2';
+}
+function getFocusSlot() {
+  const v = Number(localStorage.getItem('focusSlot') || 0);
+  return Number.isFinite(v) && v >= 0 && v <= 3 ? v : 0;
+}
+function setLayout(mode) {
+  localStorage.setItem('layout', mode);
+  applyLayout();
+}
+function setFocus(idx) {
+  localStorage.setItem('focusSlot', String(idx));
+  applyLayout();
+}
+function applyLayout() {
+  const layout = getLayout();
+  const focus = getFocusSlot();
+  $('videoArea').classList.toggle('layout-2x2', layout === '2x2');
+  $('videoArea').classList.toggle('layout-1x1', layout === '1x1');
+  document.querySelectorAll('.tile').forEach(t => {
+    t.classList.toggle(
+      'focused', Number(t.dataset.slot) === focus);
+  });
+  $('layoutSelect').value = layout;
+  $('focusSelect').value = String(focus);
+  $('focusSelect').disabled = (layout !== '1x1');
+  updateStreamSrcs();
+}
+
+/* Only fetch streams for tiles that are actually on-screen — in 1x1,
+ * close the 3 hidden MJPEG connections to avoid server CPU.            */
+function updateStreamSrcs() {
+  const layout = getLayout();
+  const focus = getFocusSlot();
+  document.querySelectorAll('.tile').forEach(t => {
+    const idx = Number(t.dataset.slot);
+    const img = t.querySelector('img');
+    const shouldLive = (layout === '2x2') || (idx === focus);
+    const wanted = shouldLive ? `/stream/${idx}` : '';
+    // Compare against pathname to ignore ?cachebust variations
+    const currentPath = img.src ? new URL(img.src, location.href).pathname
+                                : '';
+    if (shouldLive && currentPath !== `/stream/${idx}`) {
+      img.src = `/stream/${idx}?t=${Date.now()}`;
+    } else if (!shouldLive && currentPath.startsWith('/stream/')) {
+      img.src = '';
+    }
+  });
+}
+
+/* ------------------------------------------------------------------ */
+/* Server-backed controls                                              */
+/* ------------------------------------------------------------------ */
+async function setSourceMode(mode) {
+  try {
+    const r = await fetch(
+      `/api/source_mode/${encodeURIComponent(mode)}`, {method:'POST'});
+    if (!r.ok) console.error('setSourceMode failed', r.status);
+    // Force a reload of stream tags so the new sources appear
+    setTimeout(() => {
+      document.querySelectorAll('.tile img').forEach(img => {
+        if (img.src.includes('/stream/')) {
+          img.src = img.src.split('?')[0] + '?t=' + Date.now();
+        }
+      });
+    }, 800);
+  } catch(e) { console.error(e); }
+}
+
+async function setAlprMode(mode) {
+  try {
+    const r = await fetch(
+      `/api/alpr/mode/${encodeURIComponent(mode)}`, {method:'POST'});
+    if (!r.ok) console.error('setAlprMode failed', r.status);
+  } catch(e) { console.error(e); }
+}
+
+/* ------------------------------------------------------------------ */
+/* Boot sequence                                                       */
+/* ------------------------------------------------------------------ */
+async function pollStatus() {
+  try {
+    const r = await fetch('/status');
+    const d = await r.json();
+    $('loadingStatus').textContent = d.status;
+    if (d.ready) {
+      $('loadingOverlay').style.display = 'none';
+      ready = true;
+      applyLayout();
+      loadInitial();
+      pollTelemetry();
+      pollEvents();
+      return;
+    }
+  } catch(e) {}
+  setTimeout(pollStatus, 1000);
+}
+
+async function loadInitial() {
+  try {
+    const [sr, ar] = await Promise.all([
+      fetch('/api/source_mode').then(r => r.json()),
+      fetch('/api/alpr/mode').then(r => r.json()),
+    ]);
+    $('sourceModeSelect').value = sr.mode;
+    $('alprModeSelect').value = ar.mode;
+    updateAlprDeviceBadge(ar.device);
+  } catch(e) {}
+}
+
+function updateAlprDeviceBadge(device) {
+  const b = $('alprDeviceBadge');
+  if (!device) {
+    b.className = 'badge alpr-off';
+    b.textContent = 'ALPR --';
+    b.title = 'Plate detector device unknown';
+    return;
+  }
+  const dev = device.toUpperCase();
+  if (dev.startsWith('NPU')) {
+    b.className = 'badge alpr-npu';
+    b.textContent = 'ALPR NPU';
+    b.title = 'Plate detector running on NPU';
+  } else {
+    b.className = 'badge alpr-cpu';
+    b.textContent = 'ALPR CPU';
+    b.title = 'NPU unavailable — plate detector on CPU (fallback)';
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Polling                                                             */
+/* ------------------------------------------------------------------ */
+async function pollTelemetry() {
+  if (!ready) return;
+  try {
+    const r = await fetch('/api/telemetry');
+    const t = await r.json();
+    const g = t.global || {};
+    const slots = t.slots || [];
+
+    // Global card
+    $('tNpu').textContent = (g.npu_latency_ms ?? 0).toFixed(0) + ' ms';
+    $('npuBadge').className = 'badge ' + (g.npu_active ? 'npu' : 'off');
+    if (g.alpr_mode === 'never') {
+      $('tAlpr').textContent = 'off';
+    } else if ((g.alpr_latency_ms || 0) > 0) {
+      $('tAlpr').textContent = (g.alpr_latency_ms).toFixed(0) + ' ms';
+    } else {
+      $('tAlpr').textContent = '--';
+    }
+    if (g.alpr_device !== undefined) updateAlprDeviceBadge(g.alpr_device);
+
+    // Keep dropdowns in sync (another tab might have changed them)
+    if (g.alpr_mode && $('alprModeSelect').value !== g.alpr_mode) {
+      $('alprModeSelect').value = g.alpr_mode;
+    }
+    if (g.source_mode && $('sourceModeSelect').value !== g.source_mode) {
+      $('sourceModeSelect').value = g.source_mode;
+    }
+
+    // Per-slot tile overlays
+    slots.forEach(s => {
+      const name = $(`videoArea`).querySelector(`[data-name="${s.idx}"]`);
+      const stats = $(`videoArea`).querySelector(`[data-stats="${s.idx}"]`);
+      if (name) {
+        name.textContent = s.name
+          ? s.name + (s.source_type === 'video' ? ' (test)' : '')
+          : `Slot ${s.idx} (empty)`;
+      }
+      if (stats) {
+        let dotClass = 'empty';
+        if (s.source_type !== 'none') {
+          dotClass = s.connected ? 'connected' : 'disconnected';
+        }
+        const fps = (s.fps ?? 0).toFixed(1);
+        const fpsStr = s.source_type !== 'none' ? `${fps} fps` : '';
+        stats.innerHTML =
+          `<span class="dot ${dotClass}"></span>${fpsStr}`;
+      }
+    });
+
+    // Per-slot sidebar cards
+    renderSlotCards(slots);
+
+    // Focus dropdown options reflect current camera names
+    const sel = $('focusSelect');
+    const currentFocus = sel.value;
+    sel.innerHTML = '';
+    slots.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = String(s.idx);
+      const label = s.name || `(empty)`;
+      opt.textContent = `Slot ${s.idx}: ${label}`;
+      if (s.source_type === 'none') opt.disabled = true;
+      sel.appendChild(opt);
+    });
+    if (currentFocus) sel.value = currentFocus;
+
+    // Aggregated plates from all slots
+    const allPlates = [].concat(...slots.map(s => s.plates || []));
+    const plateDiv = $('plateList');
+    if (allPlates.length > 0) {
+      plateDiv.innerHTML = allPlates.map(p =>
+        `<span class="plate-tag">${p.text}</span>`
+      ).join('');
+    } else {
+      plateDiv.innerHTML =
+        '<span style="color:#64748b;font-size:0.8rem">No plates detected</span>';
+    }
+  } catch(e) {}
+  setTimeout(pollTelemetry, 500);
+}
+
+function renderSlotCards(slots) {
+  const host = $('slotCards');
+  host.innerHTML = slots.map(s => {
+    let cls = 'empty';
+    if (s.source_type !== 'none') {
+      cls = s.connected ? 'connected' : 'disconnected';
+    }
+    const label = s.name || '(empty)';
+    const state = s.source_type === 'none' ? 'no camera'
+                : (s.connected ? `${(s.fps ?? 0).toFixed(1)} fps`
+                               : 'reconnecting');
+    const detStr = (s.detections_count ?? 0) > 0
+      ? `${s.detections_count} det` : '';
+    return `<div class="slot-card ${cls}">
+      <div class="slot-card-head">
+        <span>#${s.idx} ${label}</span>
+        <span>${detStr}</span>
+      </div>
+      <div class="slot-card-foot">${state}</div>
+    </div>`;
+  }).join('');
+}
+
+async function pollEvents() {
+  if (!ready) return;
+  try {
+    const r = await fetch('/api/events');
+    const events = await r.json();
+    const el = $('eventList');
+    el.innerHTML = events.slice(0, 80).map(e => {
+      const t = e.timestamp.split('T')[1]?.split('.')[0] || '';
+      const isPlate = e.class.startsWith('PLATE:');
+      const cls = isPlate
+        ? `<span class="plate-tag">${e.class.replace('PLATE: ','')}</span>`
+        : `<span class="cls">${e.class}</span>`;
+      return `<div class="event">
+        <span>${cls} <span class="time">${t} ${e.camera || ''}</span></span>
+        <span class="meta">${(e.confidence*100).toFixed(0)}%</span>
+      </div>`;
+    }).join('');
+  } catch(e) {}
+  setTimeout(pollEvents, 2000);
+}
+
+pollStatus();
+</script>
+</body>
+</html>

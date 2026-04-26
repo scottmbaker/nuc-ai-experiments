@@ -1,0 +1,4 @@
+apiVersion: v2
+name: securitycam
+description: Security camera AI — YOLOv8/GPU + MobileNetV3/NPU + CPU orchestration
+version: 0.1.0

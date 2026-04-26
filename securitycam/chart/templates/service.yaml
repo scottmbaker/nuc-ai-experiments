@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: securitycam
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    app: securitycam
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: 8080
+      nodePort: {{ .Values.service.nodePort }}
