@@ -1,0 +1,53 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: code-assistant
+  labels:
+    app: code-assistant
+spec:
+  restartPolicy: Never
+  containers:
+    - name: ovms
+      image: {{ .Values.image }}
+      imagePullPolicy: Never
+      args:
+        - "--config_path"
+        - "/workspace/config.json"
+        - "--rest_port"
+        - "8000"
+        - "--port"
+        - "9000"
+        - "--log_level"
+        - "INFO"
+      ports:
+        - name: rest
+          containerPort: 8000
+        - name: grpc
+          containerPort: 9000
+      readinessProbe:
+        httpGet:
+          path: /v2/health/ready
+          port: rest
+        initialDelaySeconds: 30
+        periodSeconds: 10
+        failureThreshold: 60
+      resources:
+        limits:
+          memory: {{ .Values.memory | quote }}
+          {{- if .Values.gpu.enabled }}
+          gpu.intel.com/xe: 1
+          {{- end }}
+        requests:
+          {{- if .Values.gpu.enabled }}
+          gpu.intel.com/xe: 1
+          {{- end }}
+      securityContext:
+        runAsUser: 0
+      volumeMounts:
+        - name: dshm
+          mountPath: /dev/shm
+  volumes:
+    - name: dshm
+      emptyDir:
+        medium: Memory
+        sizeLimit: 4Gi

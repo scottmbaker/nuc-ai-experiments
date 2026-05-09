@@ -1,0 +1,19 @@
+image: localhost/code-assistant:qwen3-coder-30b
+modelName: qwen3-coder
+
+# Memory limit for the OVMS pod. INT4 30B-A3B weights ~17 GB plus KV cache
+# and OVMS overhead. Sized to fit a 32 GB cgroup budget; do not co-run
+# other AI workloads on the iGPU.
+memory: 24Gi
+
+gpu:
+  enabled: true
+
+service:
+  type: NodePort
+  # OVMS REST (OpenAI-compatible)
+  port: 8000
+  nodePort: 30083
+  # OVMS gRPC (kept for completeness; OpenCode only uses REST)
+  grpcPort: 9000
+  grpcNodePort: 30093

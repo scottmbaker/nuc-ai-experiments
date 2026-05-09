@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: code-assistant
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    app: code-assistant
+  ports:
+    - name: rest
+      port: {{ .Values.service.port }}
+      targetPort: 8000
+      nodePort: {{ .Values.service.nodePort }}
+    - name: grpc
+      port: {{ .Values.service.grpcPort }}
+      targetPort: 9000
+      nodePort: {{ .Values.service.grpcNodePort }}

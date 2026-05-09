@@ -1,0 +1,4 @@
+apiVersion: v2
+name: code-assistant
+description: Local agentic code assistant — Qwen3-Coder-30B-A3B INT4 on Intel iGPU via OVMS
+version: 0.1.0

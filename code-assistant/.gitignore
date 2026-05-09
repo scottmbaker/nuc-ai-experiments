@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Editor
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local model exports (if running export/export_model.sh into ./models)
+/models/
+
+# Smoke-test artifacts
+/tmp/code-assistant-*.json
+
+# Helm packaging output
+*.tgz
+charts/
+
+# Local overrides
+*.local.json
+opencode/config.json

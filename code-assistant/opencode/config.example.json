@@ -1,0 +1,23 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "ovms-local": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Local OVMS (NUC)",
+      "options": {
+        "baseURL": "http://NUC_IP:30083/v3",
+        "apiKey": "unused"
+      },
+      "models": {
+        "qwen3-coder": {
+          "name": "Qwen3-Coder-30B-A3B (NUC iGPU)",
+          "limit": {
+            "context": 32768,
+            "output": 8192
+          }
+        }
+      }
+    }
+  },
+  "model": "ovms-local/qwen3-coder"
+}
