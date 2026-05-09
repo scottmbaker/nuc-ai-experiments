@@ -47,9 +47,6 @@ Pipeline:
 ## Quick start
 
 ```bash
-# Copy files to the node
-rsync -avz code-assistant/ user@<node>:~/code-assistant/
-
 # On the node:
 cd ~/code-assistant
 make build MODEL=qwen3-coder-30b   # ~3-5 min: model download + image bake
